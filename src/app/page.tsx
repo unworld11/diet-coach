@@ -27,6 +27,7 @@ interface ConversationMeta {
 }
 
 type AppView = "hero" | "intake" | "chat" | "tracker";
+type MainTab = "coach" | "plan" | "tracker" | "friends";
 
 interface IntakeData {
   age: string;
@@ -409,6 +410,117 @@ function MessageBubble({ message }: { message: Message }) {
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+type Weekday = typeof WEEKDAYS[number];
+
+function parsePlanByDay(text: string): { intro: string; days: Partial<Record<Weekday, string>> } {
+  const lines = text.split("\n");
+  const dayRegex = new RegExp(`^#{1,6}\\s*(${WEEKDAYS.join("|")})\\b`, "i");
+  const days: Partial<Record<Weekday, string[]>> = {};
+  let current: Weekday | null = null;
+  const intro: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(dayRegex);
+    if (match) {
+      const matched = WEEKDAYS.find((d) => d.toLowerCase() === match[1].toLowerCase());
+      current = matched ?? null;
+      if (current && !days[current]) days[current] = [];
+      continue;
+    }
+    if (current) {
+      days[current]?.push(line);
+    } else {
+      intro.push(line);
+    }
+  }
+
+  return {
+    intro: intro.join("\n").trim(),
+    days: Object.fromEntries(
+      Object.entries(days).map(([day, content]) => [day, (content || []).join("\n").trim()]),
+    ) as Partial<Record<Weekday, string>>,
+  };
+}
+
+function DietPlanView({ messages }: { messages: Message[] }) {
+  const lastAssistantMessage = [...messages].reverse().find((m) => m.role === "assistant");
+  const content = lastAssistantMessage?.content ?? "";
+  const parsed = parsePlanByDay(content);
+  const hasWeeklyPlan = WEEKDAYS.some((day) => !!parsed.days[day]);
+  const [selectedDay, setSelectedDay] = useState<Weekday>(() => {
+    const today = new Date().toLocaleDateString(undefined, { weekday: "long" });
+    return (WEEKDAYS.find((d) => d === today) ?? "Monday") as Weekday;
+  });
+
+  useEffect(() => {
+    const today = new Date().toLocaleDateString(undefined, { weekday: "long" });
+    const fallback = (WEEKDAYS.find((d) => parsed.days[d]) ?? "Monday") as Weekday;
+    setSelectedDay(((WEEKDAYS.find((d) => d === today && parsed.days[d]) ?? fallback) as Weekday));
+  }, [content]);
+
+  if (!content) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase">Generate a plan first in chat</p>
+      </div>
+    );
+  }
+
+  if (!hasWeeklyPlan) {
+    return (
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
+        <div className="mx-auto max-w-3xl px-4 py-6">
+          <div className="border border-border-primary bg-bg-card p-5 prose-diet text-sm animate-fade-in">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-thin">
+      <div className="mx-auto max-w-3xl px-4 py-6 space-y-4 animate-fade-in">
+        <div className="border border-border-primary bg-bg-card p-4">
+          <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">
+            Weekly Plan (auto-selected for today)
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {WEEKDAYS.map((day) => (
+              <button
+                key={day}
+                onClick={() => setSelectedDay(day)}
+                disabled={!parsed.days[day]}
+                className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${
+                  selectedDay === day ? "bg-white text-black" : "border border-border-primary text-text-muted hover:text-white"
+                } disabled:opacity-30 disabled:hover:text-text-muted`}
+              >
+                {day.slice(0, 3)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {parsed.intro && (
+          <div className="border border-border-primary bg-bg-card p-5 prose-diet text-sm">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.intro}</ReactMarkdown>
+          </div>
+        )}
+
+        <div className="border border-border-primary bg-bg-card p-5">
+          <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">{selectedDay}</p>
+          <div className="prose-diet text-sm">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {parsed.days[selectedDay] || "_No dedicated plan section found for this day._"}
+            </ReactMarkdown>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1120,7 +1232,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [activeTab, setActiveTab] = useState<"coach" | "tracker" | "friends">("coach");
+  const [activeTab, setActiveTab] = useState<MainTab>("coach");
 
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
@@ -1181,7 +1293,11 @@ export default function Home() {
   useEffect(() => { if (!isStreaming) inputRef.current?.focus(); }, [isStreaming]);
 
   // ── Send message ──
-  const sendMessage = useCallback(async (userMessage: string, existingMessages: Message[] = []) => {
+  const sendMessage = useCallback(async (
+    userMessage: string,
+    existingMessages: Message[] = [],
+    options?: { openPlanOnComplete?: boolean },
+  ) => {
     const newMessages: Message[] = [...existingMessages, { role: "user", content: userMessage }];
     setMessages(newMessages);
     setInput("");
@@ -1209,6 +1325,7 @@ export default function Home() {
       setMessages((prev) => [...prev, { role: "assistant", content: `**Error:** ${msg}` }]);
     } finally {
       setIsStreaming(false);
+      if (options?.openPlanOnComplete) setActiveTab("plan");
     }
   }, []);
 
@@ -1227,7 +1344,7 @@ export default function Home() {
     setActiveTab("coach");
     setActiveConvoId(null);
     setMessages([]);
-    setTimeout(() => sendMessage(compiled, []), 100);
+    setTimeout(() => sendMessage(compiled, [], { openPlanOnComplete: true }), 100);
   };
 
   const handleNewPlan = () => { setActiveConvoId(null); setMessages([]); setView("intake"); setSidebarOpen(false); };
@@ -1277,15 +1394,16 @@ export default function Home() {
               <button onClick={() => setSidebarOpen(true)} className="md:hidden h-8 w-8 border border-border-primary flex items-center justify-center text-text-muted hover:text-white transition-colors"><IconMenu /></button>
               <div className="flex items-center border border-border-primary">
                 <button onClick={() => setActiveTab("coach")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${activeTab === "coach" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}>Coach</button>
+                <button onClick={() => setActiveTab("plan")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${activeTab === "plan" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}>Plan</button>
                 <button onClick={() => setActiveTab("tracker")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors flex items-center gap-1.5 ${activeTab === "tracker" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}><IconCamera className="h-3 w-3" />Tracker</button>
                 <button onClick={() => setActiveTab("friends")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors flex items-center gap-1.5 ${activeTab === "friends" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}><IconUsers className="h-3 w-3" />Friends</button>
               </div>
             </div>
-            <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">{{ tracker: "Meal Tracker", friends: "Friends", coach: "Chat" }[activeTab]}</span>
+            <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">{{ tracker: "Meal Tracker", friends: "Friends", coach: "Chat", plan: "Diet Plan" }[activeTab]}</span>
           </div>
         </header>
 
-        {activeTab === "friends" ? <FriendsView user={user} /> : activeTab === "tracker" ? <DietTracker user={user} /> : (
+        {activeTab === "friends" ? <FriendsView user={user} /> : activeTab === "tracker" ? <DietTracker user={user} /> : activeTab === "plan" ? <DietPlanView messages={messages} /> : (
           <>
             <main className="flex-1 overflow-y-auto scrollbar-thin">
               <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
