@@ -29,6 +29,9 @@ Brief notes on the estimated portion sizes and any assumptions you made.
 ## Verdict
 One sentence: is this meal aligned with a fat-loss / lean-gain goal? What would you change?
 
+IMPORTANT: At the very end of your response, add a single line in this exact format (the frontend parses this):
+<!--MACROS:{"label":"short meal name","calories":000,"protein":00,"carbs":00,"fat":00,"items":["item1","item2"]}-->
+
 Be concise. Use realistic portion estimates. If you cannot identify a food clearly, state your best guess and flag the uncertainty.`;
 
 export async function POST(req: NextRequest) {

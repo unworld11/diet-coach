@@ -463,17 +463,121 @@ function Sidebar({ user, conversations, activeId, onSelect, onNew, onDelete, onS
 
 // ─── Diet Tracker ────────────────────────────────────────────
 
-function DietTracker() {
+// ─── Meal log types ──────────────────────────────────────────
+
+interface MealLog {
+  id: string;
+  logged_at: string;
+  meal_type: string;
+  label: string;
+  items: string[];
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  image_url: string | null;
+  notes: string | null;
+  source: string;
+}
+
+interface ParsedMacros {
+  label: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  items: string[];
+}
+
+function guessMealType(): string {
+  const h = new Date().getHours();
+  if (h < 11) return "breakfast";
+  if (h < 15) return "lunch";
+  if (h < 18) return "snack";
+  return "dinner";
+}
+
+function formatDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function friendlyTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function parseMacrosTag(text: string): ParsedMacros | null {
+  const start = text.indexOf("<!--MACROS:");
+  const end = text.indexOf("-->", start);
+  if (start === -1 || end === -1) return null;
+  const json = text.slice(start + 11, end);
+  try { return JSON.parse(json); } catch { return null; }
+}
+
+function IconChevron({ className = "h-4 w-4", dir = "left" }: { className?: string; dir?: "left" | "right" }) {
+  return dir === "left"
+    ? <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+    : <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>;
+}
+
+function IconClock({ className = "h-4 w-4" }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+}
+
+function DietTracker({ user }: { user: User | null }) {
+  const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
+  const [meals, setMeals] = useState<MealLog[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // scanner state
   const [image, setImage] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<string | null>(null);
+  const [scanMacros, setScanMacros] = useState<ParsedMacros | null>(null);
+  const [scanSaved, setScanSaved] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // manual add state
+  const [showManual, setShowManual] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    label: "", calories: "", protein: "", carbs: "", fat: "",
+    meal_type: guessMealType(), logged_at: "",
+  });
+
+  // sub-view: "log" | "scan" | "manual"
+  const [subView, setSubView] = useState<"log" | "scan" | "manual">("log");
+
+  const fetchMeals = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/meals?date=${selectedDate}`);
+      if (res.ok) { const data = await res.json(); setMeals(data.meals || []); }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, [user, selectedDate]);
+
+  useEffect(() => { fetchMeals(); }, [fetchMeals]);
+
+  const totals = meals.reduce(
+    (acc, m) => ({ cal: acc.cal + m.calories, pro: acc.pro + m.protein, carb: acc.carb + m.carbs, fat: acc.fat + m.fat }),
+    { cal: 0, pro: 0, carb: 0, fat: 0 },
+  );
+
+  // date navigation
+  const shiftDate = (delta: number) => {
+    const d = new Date(selectedDate + "T12:00:00");
+    d.setDate(d.getDate() + delta);
+    setSelectedDate(formatDate(d));
+  };
+  const isToday = selectedDate === formatDate(new Date());
+  const dateLabel = isToday ? "Today" : new Date(selectedDate + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+
+  // scanner
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onloadend = () => { const b = reader.result as string; setImage(b); setResult(null); analyzeImage(b); };
+    reader.onloadend = () => { const b = reader.result as string; setImage(b); setScanResult(null); setScanMacros(null); setScanSaved(false); analyzeImage(b); };
     reader.readAsDataURL(file);
   };
 
@@ -493,54 +597,235 @@ function DietTracker() {
         for (const line of chunk.split("\n").filter((l) => l.startsWith("data: "))) {
           const d = line.slice(6);
           if (d === "[DONE]") break;
-          try { content += JSON.parse(d).text; setResult(content); } catch { /* skip */ }
+          try { content += JSON.parse(d).text; setScanResult(content); } catch { /* skip */ }
         }
       }
-    } catch { setResult("**Could not analyze this image.** Try a clearer photo."); }
+      const macros = parseMacrosTag(content);
+      if (macros) setScanMacros(macros);
+    } catch { setScanResult("**Could not analyze this image.** Try a clearer photo."); }
     finally { setAnalyzing(false); }
   };
 
-  const reset = () => { setImage(null); setResult(null); if (fileRef.current) fileRef.current.value = ""; };
+  const saveScan = async () => {
+    if (!scanMacros || scanSaved) return;
+    await fetch("/api/meals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        logged_at: new Date().toISOString(),
+        meal_type: guessMealType(),
+        label: scanMacros.label,
+        items: scanMacros.items,
+        calories: scanMacros.calories,
+        protein: scanMacros.protein,
+        carbs: scanMacros.carbs,
+        fat: scanMacros.fat,
+        source: "scan",
+      }),
+    });
+    setScanSaved(true);
+    fetchMeals();
+  };
+
+  const resetScan = () => { setImage(null); setScanResult(null); setScanMacros(null); setScanSaved(false); if (fileRef.current) fileRef.current.value = ""; };
+
+  // manual add
+  const handleManualSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const loggedAt = manualForm.logged_at
+      ? new Date(manualForm.logged_at).toISOString()
+      : new Date().toISOString();
+    await fetch("/api/meals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        logged_at: loggedAt,
+        meal_type: manualForm.meal_type,
+        label: manualForm.label,
+        items: [],
+        calories: parseInt(manualForm.calories) || 0,
+        protein: parseFloat(manualForm.protein) || 0,
+        carbs: parseFloat(manualForm.carbs) || 0,
+        fat: parseFloat(manualForm.fat) || 0,
+        source: "manual",
+      }),
+    });
+    setManualForm({ label: "", calories: "", protein: "", carbs: "", fat: "", meal_type: guessMealType(), logged_at: "" });
+    setSubView("log");
+    fetchMeals();
+  };
+
+  const deleteMeal = async (id: string) => {
+    await fetch(`/api/meals/${id}`, { method: "DELETE" });
+    setMeals((prev) => prev.filter((m) => m.id !== id));
+  };
 
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin">
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <div className="mb-8">
-          <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-2">Image Recognition</p>
-          <h2 className="text-2xl font-bold tracking-tight uppercase">Meal Scanner</h2>
-          <p className="text-sm text-text-secondary mt-2">Snap a photo of your meal. AI estimates calories, protein, carbs, and fat.</p>
-        </div>
-        {!image ? (
-          <div onClick={() => fileRef.current?.click()} className="group border border-dashed border-border-accent hover:border-white/40 transition-colors cursor-pointer flex flex-col items-center justify-center py-20 px-8">
-            <IconCamera className="h-10 w-10 text-text-muted group-hover:text-white transition-colors mb-4" />
-            <p className="text-xs font-mono text-text-muted group-hover:text-white transition-colors uppercase tracking-wider">Upload meal photo</p>
-            <p className="text-[10px] text-text-muted mt-2">JPG, PNG, WEBP</p>
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFile} className="hidden" />
-          </div>
-        ) : (
-          <div className="space-y-4 animate-fade-in">
-            <div className="relative border border-border-primary">
-              <img src={image} alt="Meal" className="w-full max-h-80 object-cover grayscale-[30%]" />
-              {analyzing && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="flex items-center gap-1.5 justify-center mb-2">
-                      {[0, 1, 2].map((i) => (<span key={i} className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white" style={{ animation: "typing-dot 1s ease-in-out infinite", animationDelay: `${i * 0.15}s` }} />))}
-                    </div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-text-secondary">Analyzing</p>
-                  </div>
-                </div>
-              )}
+      <div className="mx-auto max-w-2xl px-4 py-6">
+
+        {/* ── Date picker + daily totals ── */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={() => shiftDate(-1)} className="h-8 w-8 border border-border-primary flex items-center justify-center text-text-muted hover:text-white transition-colors"><IconChevron dir="left" /></button>
+            <div className="text-center">
+              <p className="text-sm font-bold uppercase tracking-wider">{dateLabel}</p>
+              <p className="text-[10px] font-mono text-text-muted tracking-wider">{selectedDate}</p>
             </div>
-            {result && (
-              <div className="border border-border-primary bg-bg-card p-5 animate-fade-in">
-                <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">Analysis</p>
-                <div className="prose-diet text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]}>{result}</ReactMarkdown></div>
+            <button onClick={() => shiftDate(1)} disabled={isToday} className="h-8 w-8 border border-border-primary flex items-center justify-center text-text-muted hover:text-white transition-colors disabled:opacity-20"><IconChevron dir="right" /></button>
+          </div>
+
+          {/* Macro summary bar */}
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: "Calories", val: totals.cal, unit: "kcal", color: "bg-white" },
+              { label: "Protein", val: totals.pro.toFixed(0), unit: "g", color: "bg-white/70" },
+              { label: "Carbs", val: totals.carb.toFixed(0), unit: "g", color: "bg-white/50" },
+              { label: "Fat", val: totals.fat.toFixed(0), unit: "g", color: "bg-white/30" },
+            ].map((m) => (
+              <div key={m.label} className="border border-border-primary p-3 text-center">
+                <p className="text-[9px] font-mono text-text-muted tracking-[0.15em] uppercase">{m.label}</p>
+                <p className="text-lg font-bold mt-0.5">{m.val}</p>
+                <p className="text-[9px] text-text-muted">{m.unit}</p>
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Sub-nav ── */}
+        <div className="flex items-center gap-2 mb-5 border-b border-border-primary pb-3">
+          {([
+            { key: "log", label: "Daily Log" },
+            { key: "scan", label: "Scan Meal" },
+            { key: "manual", label: "Add Manually" },
+          ] as const).map((t) => (
+            <button key={t.key} onClick={() => setSubView(t.key)}
+              className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${subView === t.key ? "bg-white text-black" : "text-text-muted hover:text-white"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Daily Log ── */}
+        {subView === "log" && (
+          <div className="space-y-2 animate-fade-in">
+            {loading ? (
+              <p className="text-xs font-mono text-text-muted text-center py-8 uppercase tracking-wider">Loading...</p>
+            ) : meals.length === 0 ? (
+              <div className="text-center py-12 border border-dashed border-border-accent">
+                <p className="text-xs font-mono text-text-muted uppercase tracking-wider mb-2">No meals logged</p>
+                <p className="text-[10px] text-text-muted">Scan a meal or add one manually</p>
+              </div>
+            ) : (
+              meals.map((meal) => (
+                <div key={meal.id} className="border border-border-primary bg-bg-card p-4 flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[9px] font-mono text-black bg-white px-1.5 py-0.5 uppercase tracking-wider">{meal.meal_type}</span>
+                      <span className="text-[10px] text-text-muted font-mono flex items-center gap-1"><IconClock className="h-3 w-3" />{friendlyTime(meal.logged_at)}</span>
+                      {meal.source === "scan" && <span className="text-[9px] font-mono text-text-muted border border-border-accent px-1 py-0.5 uppercase">AI</span>}
+                    </div>
+                    <p className="text-sm font-medium truncate">{meal.label || "Meal"}</p>
+                    <div className="flex gap-3 mt-1.5 text-[10px] font-mono text-text-secondary">
+                      <span>{meal.calories} kcal</span>
+                      <span>P {meal.protein}g</span>
+                      <span>C {meal.carbs}g</span>
+                      <span>F {meal.fat}g</span>
+                    </div>
+                  </div>
+                  <button onClick={() => deleteMeal(meal.id)} className="text-text-muted hover:text-white transition-colors mt-1"><IconTrash /></button>
+                </div>
+              ))
             )}
-            <button onClick={reset} className="text-[11px] font-mono uppercase tracking-[0.15em] text-text-muted hover:text-white transition-colors border-b border-text-muted hover:border-white pb-0.5">Scan another meal</button>
           </div>
         )}
+
+        {/* ── Scan Meal ── */}
+        {subView === "scan" && (
+          <div className="animate-fade-in">
+            {!image ? (
+              <div onClick={() => fileRef.current?.click()} className="group border border-dashed border-border-accent hover:border-white/40 transition-colors cursor-pointer flex flex-col items-center justify-center py-20 px-8">
+                <IconCamera className="h-10 w-10 text-text-muted group-hover:text-white transition-colors mb-4" />
+                <p className="text-xs font-mono text-text-muted group-hover:text-white transition-colors uppercase tracking-wider">Upload meal photo</p>
+                <p className="text-[10px] text-text-muted mt-2">JPG, PNG, WEBP</p>
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFile} className="hidden" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="relative border border-border-primary">
+                  <img src={image} alt="Meal" className="w-full max-h-80 object-cover grayscale-[30%]" />
+                  {analyzing && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="flex items-center gap-1.5 justify-center mb-2">
+                          {[0, 1, 2].map((i) => (<span key={i} className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white" style={{ animation: "typing-dot 1s ease-in-out infinite", animationDelay: `${i * 0.15}s` }} />))}
+                        </div>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-text-secondary">Analyzing</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {scanResult && (
+                  <div className="border border-border-primary bg-bg-card p-5 animate-fade-in">
+                    <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">Analysis</p>
+                    <div className="prose-diet text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]}>{scanResult.replace(/<!--MACROS:.*?-->/, "")}</ReactMarkdown></div>
+                  </div>
+                )}
+                {scanMacros && !scanSaved && (
+                  <button onClick={saveScan} className="w-full py-3 bg-white text-black text-xs font-mono uppercase tracking-[0.15em] hover:bg-gray-200 transition-colors">
+                    Save to today&apos;s log — {scanMacros.calories} kcal
+                  </button>
+                )}
+                {scanSaved && (
+                  <p className="text-xs font-mono text-text-secondary text-center uppercase tracking-wider py-2">Saved to log</p>
+                )}
+                <button onClick={resetScan} className="text-[11px] font-mono uppercase tracking-[0.15em] text-text-muted hover:text-white transition-colors border-b border-text-muted hover:border-white pb-0.5">Scan another meal</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Manual Add ── */}
+        {subView === "manual" && (
+          <form onSubmit={handleManualSubmit} className="space-y-4 animate-fade-in">
+            <Field label="Meal name">
+              <input value={manualForm.label} onChange={(e) => setManualForm({ ...manualForm, label: e.target.value })} placeholder="e.g. Chicken rice bowl" className={inputClass} required />
+            </Field>
+            <Field label="Meal type">
+              <Pills
+                options={[
+                  { value: "breakfast", label: "Breakfast" },
+                  { value: "lunch", label: "Lunch" },
+                  { value: "snack", label: "Snack" },
+                  { value: "dinner", label: "Dinner" },
+                ]}
+                value={manualForm.meal_type}
+                onChange={(v) => setManualForm({ ...manualForm, meal_type: v })}
+              />
+            </Field>
+            <Field label="Date & time (leave blank for now)">
+              <input type="datetime-local" value={manualForm.logged_at} onChange={(e) => setManualForm({ ...manualForm, logged_at: e.target.value })} className={inputClass} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Calories (kcal)">
+                <input type="number" value={manualForm.calories} onChange={(e) => setManualForm({ ...manualForm, calories: e.target.value })} placeholder="0" className={inputClass} required />
+              </Field>
+              <Field label="Protein (g)">
+                <input type="number" step="0.1" value={manualForm.protein} onChange={(e) => setManualForm({ ...manualForm, protein: e.target.value })} placeholder="0" className={inputClass} />
+              </Field>
+              <Field label="Carbs (g)">
+                <input type="number" step="0.1" value={manualForm.carbs} onChange={(e) => setManualForm({ ...manualForm, carbs: e.target.value })} placeholder="0" className={inputClass} />
+              </Field>
+              <Field label="Fat (g)">
+                <input type="number" step="0.1" value={manualForm.fat} onChange={(e) => setManualForm({ ...manualForm, fat: e.target.value })} placeholder="0" className={inputClass} />
+              </Field>
+            </div>
+            <button type="submit" className="w-full py-3 bg-white text-black text-xs font-mono uppercase tracking-[0.15em] hover:bg-gray-200 transition-colors">
+              Add Meal
+            </button>
+          </form>
+        )}
+
       </div>
     </div>
   );
@@ -633,13 +918,31 @@ export default function Home() {
 
   // ── Auth ──
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user: u } }) => { setUser(u); setAuthLoading(false); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    supabase.auth.getUser().then(({ data: { user: u } }) => {
+      setUser(u);
+      setAuthLoading(false);
+      if (u && view === "hero") setView("tracker");
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u && view === "hero") setView("tracker");
+    });
     return () => subscription.unsubscribe();
   }, [supabase.auth]);
 
   useEffect(() => {
-    if (user) fetch("/api/conversations").then((r) => r.json()).then((d) => setConversations(d.conversations ?? [])).catch(() => {});
+    if (!user) return;
+    fetch("/api/conversations").then((r) => r.json()).then((d) => {
+      const convos = d.conversations ?? [];
+      setConversations(convos);
+      if (convos.length > 0 && !activeConvoId && view === "tracker") {
+        setActiveConvoId(convos[0].id);
+        fetch(`/api/conversations/${convos[0].id}`).then((r) => r.json()).then((cd) => {
+          if (cd.conversation) setMessages(cd.conversation.messages || []);
+        }).catch(() => {});
+      }
+    }).catch(() => {});
   }, [user]);
 
   // ── Auto-save ──
@@ -763,11 +1066,11 @@ export default function Home() {
                 <button onClick={() => setActiveTab("tracker")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors flex items-center gap-1.5 ${activeTab === "tracker" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}><IconCamera className="h-3 w-3" />Tracker</button>
               </div>
             </div>
-            <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">{activeTab === "tracker" ? "Image Recognition" : "Chat"}</span>
+            <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">{activeTab === "tracker" ? "Meal Tracker" : "Chat"}</span>
           </div>
         </header>
 
-        {activeTab === "tracker" ? <DietTracker /> : (
+        {activeTab === "tracker" ? <DietTracker user={user} /> : (
           <>
             <main className="flex-1 overflow-y-auto scrollbar-thin">
               <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
