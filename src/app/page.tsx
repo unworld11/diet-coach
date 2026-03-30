@@ -448,21 +448,75 @@ function parsePlanByDay(text: string): { intro: string; days: Partial<Record<Wee
   };
 }
 
+interface StructuredDayPlan {
+  day: Weekday;
+  title: string;
+  summary: string;
+  meals: string[];
+}
+
+interface StructuredPlanData {
+  intro: string;
+  days: StructuredDayPlan[];
+}
+
 function DietPlanView({ messages }: { messages: Message[] }) {
   const lastAssistantMessage = [...messages].reverse().find((m) => m.role === "assistant");
   const content = lastAssistantMessage?.content ?? "";
   const parsed = parsePlanByDay(content);
-  const hasWeeklyPlan = WEEKDAYS.some((day) => !!parsed.days[day]);
+  const [structuredPlan, setStructuredPlan] = useState<StructuredPlanData | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Weekday>(() => {
     const today = new Date().toLocaleDateString(undefined, { weekday: "long" });
     return (WEEKDAYS.find((d) => d === today) ?? "Monday") as Weekday;
   });
 
   useEffect(() => {
-    const today = new Date().toLocaleDateString(undefined, { weekday: "long" });
-    const fallback = (WEEKDAYS.find((d) => parsed.days[d]) ?? "Monday") as Weekday;
-    setSelectedDay(((WEEKDAYS.find((d) => d === today && parsed.days[d]) ?? fallback) as Weekday));
+    if (!content) {
+      setStructuredPlan(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsExtracting(true);
+
+    (async () => {
+      try {
+        const res = await fetch("/api/plan-structure", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("Failed to extract structured plan.");
+        const data = (await res.json()) as StructuredPlanData;
+        setStructuredPlan(data);
+      } catch {
+        setStructuredPlan(null);
+      } finally {
+        if (!controller.signal.aborted) setIsExtracting(false);
+      }
+    })();
+
+    return () => controller.abort();
   }, [content]);
+
+  const planByDay: Partial<Record<Weekday, string>> = structuredPlan
+    ? Object.fromEntries(
+        structuredPlan.days.map((dayPlan) => [
+          dayPlan.day,
+          [`### ${dayPlan.title}`, dayPlan.summary, dayPlan.meals.map((meal) => `- ${meal}`).join("\n")].filter(Boolean).join("\n\n"),
+        ]),
+      ) as Partial<Record<Weekday, string>>
+    : parsed.days;
+  const intro = structuredPlan?.intro || parsed.intro;
+  const hasWeeklyPlan = WEEKDAYS.some((day) => !!planByDay[day]);
+
+  useEffect(() => {
+    const today = new Date().toLocaleDateString(undefined, { weekday: "long" });
+    const fallback = (WEEKDAYS.find((d) => planByDay[d]) ?? "Monday") as Weekday;
+    setSelectedDay(((WEEKDAYS.find((d) => d === today && planByDay[d]) ?? fallback) as Weekday));
+  }, [content, planByDay]);
 
   if (!content) {
     return (
@@ -486,39 +540,46 @@ function DietPlanView({ messages }: { messages: Message[] }) {
 
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin">
-      <div className="mx-auto max-w-3xl px-4 py-6 space-y-4 animate-fade-in">
-        <div className="border border-border-primary bg-bg-card p-4">
-          <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">
-            Weekly Plan (auto-selected for today)
-          </p>
-          <div className="flex flex-wrap gap-2">
+      <div className="mx-auto max-w-5xl px-4 py-6 animate-fade-in">
+        <div className="border border-border-primary bg-bg-secondary/60 p-5 md:p-6">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase">Weekly Plan Containers</p>
+            {isExtracting && (
+              <span className="text-[10px] font-mono text-text-muted uppercase tracking-[0.14em]">
+                Extracting day data...
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-5">
             {WEEKDAYS.map((day) => (
               <button
                 key={day}
                 onClick={() => setSelectedDay(day)}
-                disabled={!parsed.days[day]}
-                className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${
-                  selectedDay === day ? "bg-white text-black" : "border border-border-primary text-text-muted hover:text-white"
+                disabled={!planByDay[day]}
+                className={`px-3 py-2 text-[10px] font-mono uppercase tracking-[0.15em] border transition-colors ${
+                  selectedDay === day ? "bg-white text-black border-white" : "border-border-primary text-text-muted hover:text-white"
                 } disabled:opacity-30 disabled:hover:text-text-muted`}
               >
-                {day.slice(0, 3)}
+                <span className="block text-[9px] text-text-muted">{day.slice(0, 3)}</span>
+                <span className="block mt-1">{day}</span>
               </button>
             ))}
           </div>
-        </div>
 
-        {parsed.intro && (
-          <div className="border border-border-primary bg-bg-card p-5 prose-diet text-sm">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{parsed.intro}</ReactMarkdown>
-          </div>
-        )}
+          {intro && (
+            <div className="border border-border-primary bg-bg-card p-5 prose-diet text-sm mb-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{intro}</ReactMarkdown>
+            </div>
+          )}
 
-        <div className="border border-border-primary bg-bg-card p-5">
-          <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">{selectedDay}</p>
-          <div className="prose-diet text-sm">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {parsed.days[selectedDay] || "_No dedicated plan section found for this day._"}
-            </ReactMarkdown>
+          <div className="border border-border-primary bg-bg-card p-5">
+            <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">{selectedDay}</p>
+            <div className="prose-diet text-sm">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {planByDay[selectedDay] || "_No dedicated plan section found for this day._"}
+              </ReactMarkdown>
+            </div>
           </div>
         </div>
       </div>
