@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const { messages } = await req.json();
 
     const stream = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
       stream: true,
       temperature: 0.8,
