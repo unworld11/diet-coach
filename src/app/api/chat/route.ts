@@ -58,11 +58,11 @@ export async function POST(req: NextRequest) {
     const { messages } = await req.json();
 
     const stream = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-5.4",
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
       stream: true,
       temperature: 0.8,
-      max_tokens: 4096,
+      max_completion_tokens: 4096,
     });
 
     const encoder = new TextEncoder();
