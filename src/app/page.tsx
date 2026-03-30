@@ -126,10 +126,33 @@ function Pills({ options, value, onChange }: { options: { value: string; label: 
 // ─── Intake Form ─────────────────────────────────────────────
 
 const INTAKE_STEPS = ["STATS", "LIFESTYLE", "FOOD", "SNACKS"];
+const INTAKE_STORAGE_KEY = "diet-coach:intake-draft";
+const TRACKER_STORAGE_KEY = "diet-coach:tracker-draft";
 
 function IntakeForm({ onComplete }: { onComplete: (data: IntakeData) => void }) {
-  const [step, setStep] = useState(0);
-  const [data, setData] = useState<IntakeData>(EMPTY_INTAKE);
+  const [step, setStep] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      const raw = window.localStorage.getItem(INTAKE_STORAGE_KEY);
+      if (!raw) return 0;
+      const parsed = JSON.parse(raw) as { step?: number };
+      const s = Number(parsed.step ?? 0);
+      return Number.isFinite(s) ? Math.min(Math.max(s, 0), 3) : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [data, setData] = useState<IntakeData>(() => {
+    if (typeof window === "undefined") return EMPTY_INTAKE;
+    try {
+      const raw = window.localStorage.getItem(INTAKE_STORAGE_KEY);
+      if (!raw) return EMPTY_INTAKE;
+      const parsed = JSON.parse(raw) as { data?: Partial<IntakeData> };
+      return { ...EMPTY_INTAKE, ...(parsed.data ?? {}) };
+    } catch {
+      return EMPTY_INTAKE;
+    }
+  });
 
   const set = (field: keyof IntakeData) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setData((d) => ({ ...d, [field]: e.target.value }));
@@ -137,8 +160,20 @@ function IntakeForm({ onComplete }: { onComplete: (data: IntakeData) => void }) 
   const setVal = (field: keyof IntakeData, value: string) =>
     setData((d) => ({ ...d, [field]: value }));
 
-  const next = () => step < 3 ? setStep(step + 1) : onComplete(data);
+  const next = () => {
+    if (step < 3) {
+      setStep(step + 1);
+      return;
+    }
+    if (typeof window !== "undefined") window.localStorage.removeItem(INTAKE_STORAGE_KEY);
+    onComplete(data);
+  };
   const back = () => step > 0 && setStep(step - 1);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(INTAKE_STORAGE_KEY, JSON.stringify({ step, data }));
+  }, [step, data]);
 
   const canProceed = () => {
     switch (step) {
@@ -642,7 +677,17 @@ function IconClock({ className = "h-4 w-4" }: { className?: string }) {
 }
 
 function DietTracker({ user }: { user: User | null }) {
-  const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => {
+    if (typeof window === "undefined") return formatDate(new Date());
+    try {
+      const raw = window.localStorage.getItem(TRACKER_STORAGE_KEY);
+      if (!raw) return formatDate(new Date());
+      const parsed = JSON.parse(raw) as { selectedDate?: string };
+      return parsed.selectedDate || formatDate(new Date());
+    } catch {
+      return formatDate(new Date());
+    }
+  });
   const [meals, setMeals] = useState<MealLog[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -655,17 +700,74 @@ function DietTracker({ user }: { user: User | null }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // manual add state
-  const [showManual, setShowManual] = useState(false);
   const [manualForm, setManualForm] = useState({
     label: "", calories: "", protein: "", carbs: "", fat: "",
     meal_type: guessMealType(), logged_at: "",
   });
-  const [manualMode, setManualMode] = useState<"ai" | "manual">("ai");
-  const [aiDesc, setAiDesc] = useState("");
+  const [manualMode, setManualMode] = useState<"ai" | "manual">(() => {
+    if (typeof window === "undefined") return "ai";
+    try {
+      const raw = window.localStorage.getItem(TRACKER_STORAGE_KEY);
+      if (!raw) return "ai";
+      const parsed = JSON.parse(raw) as { manualMode?: "ai" | "manual" };
+      return parsed.manualMode === "manual" ? "manual" : "ai";
+    } catch {
+      return "ai";
+    }
+  });
+  const [aiDesc, setAiDesc] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const raw = window.localStorage.getItem(TRACKER_STORAGE_KEY);
+      if (!raw) return "";
+      const parsed = JSON.parse(raw) as { aiDesc?: string };
+      return parsed.aiDesc ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [aiEstimating, setAiEstimating] = useState(false);
 
   // sub-view: "log" | "scan" | "manual"
-  const [subView, setSubView] = useState<"log" | "scan" | "manual">("log");
+  const [subView, setSubView] = useState<"log" | "scan" | "manual">(() => {
+    if (typeof window === "undefined") return "log";
+    try {
+      const raw = window.localStorage.getItem(TRACKER_STORAGE_KEY);
+      if (!raw) return "log";
+      const parsed = JSON.parse(raw) as { subView?: "log" | "scan" | "manual" };
+      return parsed.subView === "scan" || parsed.subView === "manual" ? parsed.subView : "log";
+    } catch {
+      return "log";
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(TRACKER_STORAGE_KEY, JSON.stringify({
+      selectedDate,
+      manualForm,
+      manualMode,
+      aiDesc,
+      subView,
+    }));
+  }, [selectedDate, manualForm, manualMode, aiDesc, subView]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(TRACKER_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { manualForm?: Partial<typeof manualForm> };
+      if (parsed.manualForm) {
+        setManualForm((prev) => ({
+          ...prev,
+          ...parsed.manualForm,
+        }));
+      }
+    } catch {
+      // ignore malformed local state
+    }
+  }, []);
 
   const fetchMeals = useCallback(async () => {
     if (!user) return;
