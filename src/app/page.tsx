@@ -82,6 +82,12 @@ function IconCamera({ className = "h-5 w-5" }: { className?: string }) {
 function IconArrow({ className = "h-4 w-4" }: { className?: string }) {
   return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>);
 }
+function IconUsers({ className = "h-4 w-4" }: { className?: string }) {
+  return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>);
+}
+function IconCopy({ className = "h-4 w-4" }: { className?: string }) {
+  return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>);
+}
 
 // ─── Shared Form Components ──────────────────────────────────
 
@@ -891,6 +897,154 @@ function DietTracker({ user }: { user: User | null }) {
   );
 }
 
+// ─── Friends ─────────────────────────────────────────────────
+
+interface FriendData {
+  user_id: string;
+  display_name: string;
+  share_code: string;
+  today: { calories: number; protein: number; carbs: number; fat: number };
+}
+
+function FriendsView({ user }: { user: User | null }) {
+  const [profile, setProfile] = useState<{ share_code: string; display_name: string } | null>(null);
+  const [friends, setFriends] = useState<FriendData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [code, setCode] = useState("");
+  const [addStatus, setAddStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const [pRes, fRes] = await Promise.all([fetch("/api/profile"), fetch("/api/friends")]);
+      if (pRes.ok) { const d = await pRes.json(); setProfile(d.profile); }
+      if (fRes.ok) { const d = await fRes.json(); setFriends(d.friends || []); }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, [user]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const copyCode = () => {
+    if (!profile) return;
+    navigator.clipboard.writeText(profile.share_code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const addFriend = async () => {
+    if (!code.trim()) return;
+    setAddStatus(null);
+    try {
+      const res = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAddStatus({ type: "ok", msg: `Added ${data.friend_name}` });
+        setCode("");
+        fetchData();
+      } else {
+        setAddStatus({ type: "err", msg: data.error || "Failed" });
+      }
+    } catch { setAddStatus({ type: "err", msg: "Network error" }); }
+  };
+
+  const removeFriend = async (friendUserId: string) => {
+    await fetch(`/api/friends/${friendUserId}`, { method: "DELETE" });
+    setFriends((prev) => prev.filter((f) => f.user_id !== friendUserId));
+  };
+
+  if (loading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <p className="text-[10px] font-mono text-text-muted tracking-[0.3em] uppercase animate-pulse">Loading</p>
+    </div>
+  );
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-thin">
+      <div className="mx-auto max-w-2xl px-4 py-6 space-y-6">
+
+        {/* Your share code */}
+        {profile && (
+          <div className="border border-border-primary bg-bg-card p-5">
+            <p className="text-[9px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">Your Share Code</p>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl font-bold tracking-[0.2em] font-mono uppercase">{profile.share_code}</span>
+              <button onClick={copyCode} className="h-8 w-8 border border-border-primary flex items-center justify-center text-text-muted hover:text-white transition-colors">
+                <IconCopy className="h-3.5 w-3.5" />
+              </button>
+              {copied && <span className="text-[10px] font-mono text-text-secondary uppercase tracking-wider">Copied</span>}
+            </div>
+            <p className="text-[10px] text-text-muted mt-2">Share this code with friends so they can see your daily macros</p>
+          </div>
+        )}
+
+        {/* Add friend */}
+        <div className="border border-border-primary bg-bg-card p-5">
+          <p className="text-[9px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">Add Friend</p>
+          <div className="flex gap-2">
+            <input
+              value={code}
+              onChange={(e) => { setCode(e.target.value); setAddStatus(null); }}
+              placeholder="Enter friend's code"
+              className={inputClass + " flex-1"}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFriend(); } }}
+            />
+            <button onClick={addFriend} disabled={!code.trim()}
+              className="px-4 py-2.5 bg-white text-black text-[10px] font-mono uppercase tracking-[0.15em] hover:bg-gray-200 transition-colors disabled:opacity-30">
+              Add
+            </button>
+          </div>
+          {addStatus && (
+            <p className={`text-[10px] font-mono mt-2 uppercase tracking-wider ${addStatus.type === "ok" ? "text-text-secondary" : "text-red-400"}`}>
+              {addStatus.msg}
+            </p>
+          )}
+        </div>
+
+        {/* Friends list */}
+        <div>
+          <p className="text-[9px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">
+            Friends — Today&apos;s Macros
+          </p>
+          {friends.length === 0 ? (
+            <div className="text-center py-12 border border-dashed border-border-accent">
+              <IconUsers className="h-8 w-8 text-text-muted mx-auto mb-3" />
+              <p className="text-xs font-mono text-text-muted uppercase tracking-wider mb-1">No friends yet</p>
+              <p className="text-[10px] text-text-muted">Share your code or add a friend to get started</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {friends.map((f) => (
+                <div key={f.user_id} className="border border-border-primary bg-bg-card p-4 flex items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{f.display_name}</p>
+                    <div className="flex gap-3 mt-1.5 text-[10px] font-mono text-text-secondary">
+                      <span>{f.today.calories} kcal</span>
+                      <span>P {f.today.protein.toFixed(0)}g</span>
+                      <span>C {f.today.carbs.toFixed(0)}g</span>
+                      <span>F {f.today.fat.toFixed(0)}g</span>
+                    </div>
+                  </div>
+                  <button onClick={() => removeFriend(f.user_id)} className="text-text-muted hover:text-white transition-colors">
+                    <IconTrash />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ─── Hero ────────────────────────────────────────────────────
 
 function HeroSection({ onStart, onSignIn, user }: { onStart: () => void; onSignIn: () => void; user: User | null }) {
@@ -966,7 +1120,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [activeTab, setActiveTab] = useState<"coach" | "tracker">("coach");
+  const [activeTab, setActiveTab] = useState<"coach" | "tracker" | "friends">("coach");
 
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
@@ -1124,13 +1278,14 @@ export default function Home() {
               <div className="flex items-center border border-border-primary">
                 <button onClick={() => setActiveTab("coach")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${activeTab === "coach" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}>Coach</button>
                 <button onClick={() => setActiveTab("tracker")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors flex items-center gap-1.5 ${activeTab === "tracker" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}><IconCamera className="h-3 w-3" />Tracker</button>
+                <button onClick={() => setActiveTab("friends")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors flex items-center gap-1.5 ${activeTab === "friends" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}><IconUsers className="h-3 w-3" />Friends</button>
               </div>
             </div>
-            <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">{activeTab === "tracker" ? "Meal Tracker" : "Chat"}</span>
+            <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">{{ tracker: "Meal Tracker", friends: "Friends", coach: "Chat" }[activeTab]}</span>
           </div>
         </header>
 
-        {activeTab === "tracker" ? <DietTracker user={user} /> : (
+        {activeTab === "friends" ? <FriendsView user={user} /> : activeTab === "tracker" ? <DietTracker user={user} /> : (
           <>
             <main className="flex-1 overflow-y-auto scrollbar-thin">
               <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
