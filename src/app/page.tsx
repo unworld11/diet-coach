@@ -13,6 +13,8 @@ import remarkGfm from "remark-gfm";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
+// ─── Types ───────────────────────────────────────────────────
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -24,93 +26,365 @@ interface ConversationMeta {
   updated_at: string;
 }
 
-type ActiveTab = "coach" | "tracker";
+type AppView = "hero" | "intake" | "chat" | "tracker";
 
-const SECTION_LABELS = ["STATS", "LIFESTYLE", "FOOD", "SNACKS", "PLAN"];
+interface IntakeData {
+  age: string;
+  sex: string;
+  height: string;
+  heightUnit: string;
+  weight: string;
+  weightUnit: string;
+  goalWeight: string;
+  pace: string;
+  jobType: string;
+  exerciseFreq: string;
+  exerciseType: string;
+  sleep: string;
+  stress: string;
+  alcohol: string;
+  favMeals: string;
+  hatedFoods: string;
+  restrictions: string;
+  cookingStyle: string;
+  adventurous: string;
+  currentSnacks: string;
+  snackReason: string;
+  snackPreference: string;
+  lateNightSnack: string;
+}
+
+const EMPTY_INTAKE: IntakeData = {
+  age: "", sex: "male", height: "", heightUnit: "cm", weight: "", weightUnit: "kg",
+  goalWeight: "", pace: "steady", jobType: "", exerciseFreq: "", exerciseType: "",
+  sleep: "", stress: "moderate", alcohol: "", favMeals: "", hatedFoods: "",
+  restrictions: "", cookingStyle: "quick", adventurous: "5", currentSnacks: "",
+  snackReason: "hunger", snackPreference: "both", lateNightSnack: "no",
+};
 
 // ─── Icons ───────────────────────────────────────────────────
 
 function IconPlus({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-    </svg>
-  );
+  return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>);
 }
-
 function IconTrash({ className = "h-3.5 w-3.5" }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-    </svg>
-  );
+  return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>);
 }
-
 function IconMenu({ className = "h-5 w-5" }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
-    </svg>
-  );
+  return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" /></svg>);
 }
-
 function IconSend({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-    </svg>
-  );
+  return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" /></svg>);
 }
-
 function IconCamera({ className = "h-5 w-5" }: { className?: string }) {
+  return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.04l-.821 1.315z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" /></svg>);
+}
+function IconArrow({ className = "h-4 w-4" }: { className?: string }) {
+  return (<svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>);
+}
+
+// ─── Shared Form Components ──────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.04l-.821 1.315z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-    </svg>
+    <div className="space-y-1.5">
+      <label className="block text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">{label}</label>
+      {children}
+    </div>
   );
 }
 
-// ─── Small Components ────────────────────────────────────────
+const inputClass = "w-full bg-bg-input border border-border-primary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-white/30 focus:outline-none transition-colors";
+const selectClass = inputClass + " appearance-none cursor-pointer";
 
-function TypingIndicator() {
+function Pills({ options, value, onChange }: { options: { value: string; label: string }[]; value: string; onChange: (v: string) => void }) {
   return (
-    <div className="flex items-center gap-1.5 px-1 py-2">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white"
-          style={{
-            animation: "typing-dot 1s ease-in-out infinite",
-            animationDelay: `${i * 0.15}s`,
-          }}
-        />
+    <div className="flex flex-wrap gap-2">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`px-3 py-1.5 text-xs font-mono uppercase tracking-wider border transition-colors ${
+            value === o.value ? "bg-white text-black border-white" : "border-border-accent text-text-muted hover:text-white hover:border-white/30"
+          }`}
+        >
+          {o.label}
+        </button>
       ))}
     </div>
   );
 }
 
-function SectionProgress({ current }: { current: number }) {
+// ─── Intake Form ─────────────────────────────────────────────
+
+const INTAKE_STEPS = ["STATS", "LIFESTYLE", "FOOD", "SNACKS"];
+
+function IntakeForm({ onComplete }: { onComplete: (data: IntakeData) => void }) {
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState<IntakeData>(EMPTY_INTAKE);
+
+  const set = (field: keyof IntakeData) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setData((d) => ({ ...d, [field]: e.target.value }));
+
+  const setVal = (field: keyof IntakeData, value: string) =>
+    setData((d) => ({ ...d, [field]: value }));
+
+  const next = () => step < 3 ? setStep(step + 1) : onComplete(data);
+  const back = () => step > 0 && setStep(step - 1);
+
+  const canProceed = () => {
+    switch (step) {
+      case 0: return data.age && data.height && data.weight;
+      case 1: return data.jobType && data.exerciseFreq;
+      case 2: return data.favMeals;
+      case 3: return data.currentSnacks;
+      default: return true;
+    }
+  };
+
   return (
-    <div className="flex items-center gap-1">
-      {SECTION_LABELS.map((label, i) => {
-        const done = i < current;
-        const active = i === current;
-        return (
-          <div key={label} className="flex items-center gap-1">
-            {i > 0 && (
-              <div className={`hidden sm:block h-px w-3 ${done ? "bg-white" : "bg-border-primary"}`} />
-            )}
-            <span
-              className={`text-[10px] font-mono tracking-widest transition-colors ${
-                done ? "text-white" : active ? "text-white animate-pulse-dot" : "text-text-muted"
-              }`}
-            >
-              {label}
-            </span>
+    <div className="flex flex-col items-center justify-center min-h-dvh px-6 py-12">
+      <div className="w-full max-w-lg animate-fade-in">
+        {/* Progress */}
+        <div className="flex items-center justify-between mb-10">
+          {INTAKE_STEPS.map((label, i) => (
+            <div key={label} className="flex items-center gap-2">
+              {i > 0 && <div className={`h-px w-6 sm:w-10 ${i <= step ? "bg-white" : "bg-border-primary"}`} />}
+              <span className={`text-[10px] font-mono tracking-[0.15em] ${
+                i < step ? "text-white" : i === step ? "text-white" : "text-text-muted"
+              }`}>
+                {i < step ? "✓" : `0${i + 1}`} {label}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Step 0: Stats */}
+        {step === 0 && (
+          <div className="space-y-6 animate-fade-in" key="s0">
+            <h2 className="text-2xl font-bold uppercase tracking-tight mb-1">Your Stats</h2>
+            <p className="text-xs text-text-secondary mb-6">The basics — so we can calculate your calories.</p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Age">
+                <input type="number" placeholder="25" value={data.age} onChange={set("age")} className={inputClass} />
+              </Field>
+              <Field label="Biological Sex">
+                <Pills options={[{ value: "male", label: "Male" }, { value: "female", label: "Female" }]} value={data.sex} onChange={(v) => setVal("sex", v)} />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Height">
+                <div className="flex gap-2">
+                  <input type="number" placeholder="180" value={data.height} onChange={set("height")} className={inputClass + " flex-1"} />
+                  <Pills options={[{ value: "cm", label: "CM" }, { value: "ft", label: "FT" }]} value={data.heightUnit} onChange={(v) => setVal("heightUnit", v)} />
+                </div>
+              </Field>
+              <Field label="Weight">
+                <div className="flex gap-2">
+                  <input type="number" placeholder="85" value={data.weight} onChange={set("weight")} className={inputClass + " flex-1"} />
+                  <Pills options={[{ value: "kg", label: "KG" }, { value: "lbs", label: "LBS" }]} value={data.weightUnit} onChange={(v) => setVal("weightUnit", v)} />
+                </div>
+              </Field>
+            </div>
+
+            <Field label="Goal Weight (optional)">
+              <input type="text" placeholder="75kg or 'visible abs'" value={data.goalWeight} onChange={set("goalWeight")} className={inputClass} />
+            </Field>
+
+            <Field label="Pace">
+              <Pills
+                options={[
+                  { value: "steady", label: "Steady & Sustainable" },
+                  { value: "moderate", label: "Moderate" },
+                  { value: "aggressive", label: "As Fast As Possible" },
+                ]}
+                value={data.pace}
+                onChange={(v) => setVal("pace", v)}
+              />
+            </Field>
           </div>
-        );
-      })}
+        )}
+
+        {/* Step 1: Lifestyle */}
+        {step === 1 && (
+          <div className="space-y-6 animate-fade-in" key="s1">
+            <h2 className="text-2xl font-bold uppercase tracking-tight mb-1">Lifestyle</h2>
+            <p className="text-xs text-text-secondary mb-6">Your daily routine shapes your calorie needs.</p>
+
+            <Field label="Job Type">
+              <Pills
+                options={[
+                  { value: "desk", label: "Desk Job" },
+                  { value: "on-feet", label: "On My Feet" },
+                  { value: "manual", label: "Manual Labour" },
+                  { value: "mixed", label: "Mixed" },
+                ]}
+                value={data.jobType}
+                onChange={(v) => setVal("jobType", v)}
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Workouts / Week">
+                <input type="number" placeholder="4" value={data.exerciseFreq} onChange={set("exerciseFreq")} className={inputClass} />
+              </Field>
+              <Field label="Type of Exercise">
+                <input type="text" placeholder="Weights, running, etc." value={data.exerciseType} onChange={set("exerciseType")} className={inputClass} />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Hours of Sleep">
+                <input type="number" placeholder="7" value={data.sleep} onChange={set("sleep")} className={inputClass} />
+              </Field>
+              <Field label="Stress Level">
+                <Pills
+                  options={[
+                    { value: "low", label: "Low" },
+                    { value: "moderate", label: "Moderate" },
+                    { value: "high", label: "High" },
+                  ]}
+                  value={data.stress}
+                  onChange={(v) => setVal("stress", v)}
+                />
+              </Field>
+            </div>
+
+            <Field label="Alcohol (per week)">
+              <input type="text" placeholder="e.g. 4-5 beers on weekends, or none" value={data.alcohol} onChange={set("alcohol")} className={inputClass} />
+            </Field>
+          </div>
+        )}
+
+        {/* Step 2: Food */}
+        {step === 2 && (
+          <div className="space-y-6 animate-fade-in" key="s2">
+            <h2 className="text-2xl font-bold uppercase tracking-tight mb-1">Food Preferences</h2>
+            <p className="text-xs text-text-secondary mb-6">Your favourite foods make the plan something you actually want to eat.</p>
+
+            <Field label="Top 5 Favourite Meals / Dishes">
+              <textarea placeholder="e.g. Chicken tikka masala, spaghetti bolognese, steak and chips, sushi, burgers" value={data.favMeals} onChange={set("favMeals")} rows={3} className={inputClass + " resize-none"} />
+            </Field>
+
+            <Field label="Foods You Hate">
+              <input type="text" placeholder="e.g. mushrooms, olives, liver" value={data.hatedFoods} onChange={set("hatedFoods")} className={inputClass} />
+            </Field>
+
+            <Field label="Dietary Restrictions / Allergies">
+              <input type="text" placeholder="e.g. vegetarian, dairy-free, nut allergy, or none" value={data.restrictions} onChange={set("restrictions")} className={inputClass} />
+            </Field>
+
+            <Field label="Cooking Style">
+              <Pills
+                options={[
+                  { value: "scratch", label: "From Scratch" },
+                  { value: "quick", label: "Quick Meals" },
+                  { value: "batch", label: "Batch Prep" },
+                ]}
+                value={data.cookingStyle}
+                onChange={(v) => setVal("cookingStyle", v)}
+              />
+            </Field>
+
+            <Field label="Food Adventurousness (1-10)">
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={data.adventurous}
+                  onChange={set("adventurous")}
+                  className="flex-1 accent-white"
+                />
+                <span className="text-sm font-mono w-6 text-center">{data.adventurous}</span>
+              </div>
+            </Field>
+          </div>
+        )}
+
+        {/* Step 3: Snacks */}
+        {step === 3 && (
+          <div className="space-y-6 animate-fade-in" key="s3">
+            <h2 className="text-2xl font-bold uppercase tracking-tight mb-1">Snack Habits</h2>
+            <p className="text-xs text-text-secondary mb-6">We'll find smarter swaps that still hit the spot.</p>
+
+            <Field label="Current Snacks">
+              <textarea placeholder="e.g. crisps, chocolate bars, biscuits, protein bars" value={data.currentSnacks} onChange={set("currentSnacks")} rows={2} className={inputClass + " resize-none"} />
+            </Field>
+
+            <Field label="Why Do You Snack?">
+              <Pills
+                options={[
+                  { value: "hunger", label: "Hunger" },
+                  { value: "boredom", label: "Boredom" },
+                  { value: "habit", label: "Habit" },
+                  { value: "mixed", label: "All of the above" },
+                ]}
+                value={data.snackReason}
+                onChange={(v) => setVal("snackReason", v)}
+              />
+            </Field>
+
+            <Field label="Sweet, Savoury, or Both?">
+              <Pills
+                options={[
+                  { value: "sweet", label: "Sweet" },
+                  { value: "savoury", label: "Savoury" },
+                  { value: "both", label: "Both" },
+                ]}
+                value={data.snackPreference}
+                onChange={(v) => setVal("snackPreference", v)}
+              />
+            </Field>
+
+            <Field label="Late Night Snacking?">
+              <Pills
+                options={[
+                  { value: "yes", label: "Yes" },
+                  { value: "sometimes", label: "Sometimes" },
+                  { value: "no", label: "No" },
+                ]}
+                value={data.lateNightSnack}
+                onChange={(v) => setVal("lateNightSnack", v)}
+              />
+            </Field>
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-10">
+          {step > 0 ? (
+            <button onClick={back} className="text-[11px] font-mono uppercase tracking-[0.15em] text-text-muted hover:text-white transition-colors">
+              Back
+            </button>
+          ) : <div />}
+
+          <button
+            onClick={next}
+            disabled={!canProceed()}
+            className="inline-flex items-center gap-2 bg-white text-black px-8 py-3 text-xs font-bold uppercase tracking-[0.15em] hover:bg-gray-200 active:bg-gray-300 transition-colors disabled:opacity-20 disabled:hover:bg-white"
+          >
+            {step < 3 ? "Continue" : "Generate My Plan"}
+            <IconArrow className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Small Chat Components ───────────────────────────────────
+
+function TypingIndicator() {
+  return (
+    <div className="flex items-center gap-1.5 px-1 py-2">
+      {[0, 1, 2].map((i) => (
+        <span key={i} className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white"
+          style={{ animation: "typing-dot 1s ease-in-out infinite", animationDelay: `${i * 0.15}s` }} />
+      ))}
     </div>
   );
 }
@@ -119,13 +393,9 @@ function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   return (
     <div className={`animate-fade-in flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[85%] md:max-w-[75%] px-4 py-3 ${
-          isUser
-            ? "bg-white text-black rounded-[2px]"
-            : "bg-bg-card border border-border-primary rounded-[2px]"
-        }`}
-      >
+      <div className={`max-w-[85%] md:max-w-[75%] px-4 py-3 ${
+        isUser ? "bg-white text-black rounded-[2px]" : "bg-bg-card border border-border-primary rounded-[2px]"
+      }`}>
         {isUser ? (
           <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
         ) : (
@@ -140,105 +410,49 @@ function MessageBubble({ message }: { message: Message }) {
 
 // ─── Sidebar ─────────────────────────────────────────────────
 
-function Sidebar({
-  user,
-  conversations,
-  activeId,
-  onSelect,
-  onNew,
-  onDelete,
-  onSignOut,
-  open,
-  onClose,
-}: {
-  user: User;
-  conversations: ConversationMeta[];
-  activeId: string | null;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-  onDelete: (id: string) => void;
-  onSignOut: () => void;
-  open: boolean;
-  onClose: () => void;
+function Sidebar({ user, conversations, activeId, onSelect, onNew, onDelete, onSignOut, open, onClose }: {
+  user: User; conversations: ConversationMeta[]; activeId: string | null;
+  onSelect: (id: string) => void; onNew: () => void; onDelete: (id: string) => void;
+  onSignOut: () => void; open: boolean; onClose: () => void;
 }) {
   return (
     <>
       {open && <div className="fixed inset-0 z-30 bg-black/60 md:hidden" onClick={onClose} />}
-      <aside
-        className={`fixed top-0 left-0 z-40 h-dvh w-64 border-r border-border-primary bg-bg-secondary flex flex-col transition-transform duration-200 ${
-          open ? "translate-x-0" : "-translate-x-full"
-        } md:translate-x-0 md:static md:z-auto`}
-      >
+      <aside className={`fixed top-0 left-0 z-40 h-dvh w-64 border-r border-border-primary bg-bg-secondary flex flex-col transition-transform duration-200 ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:static md:z-auto`}>
         <div className="flex items-center justify-between px-4 py-4 border-b border-border-primary">
           <span className="text-xs font-mono font-bold tracking-[0.2em] uppercase">Diet Coach</span>
-          <button
-            onClick={onNew}
-            className="h-7 w-7 border border-border-accent flex items-center justify-center text-text-muted hover:text-white hover:border-white transition-colors"
-            title="New conversation"
-          >
+          <button onClick={onNew} className="h-7 w-7 border border-border-accent flex items-center justify-center text-text-muted hover:text-white hover:border-white transition-colors" title="New plan">
             <IconPlus className="h-3.5 w-3.5" />
           </button>
         </div>
-
         <div className="flex-1 overflow-y-auto scrollbar-thin px-2 py-2 space-y-0.5">
           {conversations.length === 0 && (
-            <p className="text-[10px] font-mono text-text-muted text-center mt-8 px-4 uppercase tracking-wider">
-              No sessions
-            </p>
+            <p className="text-[10px] font-mono text-text-muted text-center mt-8 px-4 uppercase tracking-wider">No sessions</p>
           )}
           {conversations.map((c) => (
-            <div
-              key={c.id}
-              className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-colors border ${
-                c.id === activeId
-                  ? "border-border-accent bg-bg-input"
-                  : "border-transparent hover:bg-bg-hover"
-              }`}
-              onClick={() => onSelect(c.id)}
-            >
+            <div key={c.id} className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-colors border ${c.id === activeId ? "border-border-accent bg-bg-input" : "border-transparent hover:bg-bg-hover"}`} onClick={() => onSelect(c.id)}>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate">{c.title}</p>
-                <p className="text-[10px] font-mono text-text-muted">
-                  {new Date(c.updated_at).toLocaleDateString()}
-                </p>
+                <p className="text-[10px] font-mono text-text-muted">{new Date(c.updated_at).toLocaleDateString()}</p>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(c.id);
-                }}
-                className="opacity-0 group-hover:opacity-100 h-6 w-6 flex items-center justify-center text-text-muted hover:text-white transition-all"
-              >
+              <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="opacity-0 group-hover:opacity-100 h-6 w-6 flex items-center justify-center text-text-muted hover:text-white transition-all">
                 <IconTrash />
               </button>
             </div>
           ))}
         </div>
-
         <div className="border-t border-border-primary p-3">
           <div className="flex items-center gap-3">
             {user.user_metadata?.avatar_url ? (
-              <img
-                src={user.user_metadata.avatar_url}
-                alt=""
-                className="h-7 w-7 rounded-full grayscale"
-                referrerPolicy="no-referrer"
-              />
+              <img src={user.user_metadata.avatar_url} alt="" className="h-7 w-7 rounded-full grayscale" referrerPolicy="no-referrer" />
             ) : (
               <div className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold">
                 {(user.user_metadata?.full_name || user.email || "U")[0].toUpperCase()}
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-medium truncate">
-                {user.user_metadata?.full_name || user.email}
-              </p>
-              <button
-                onClick={onSignOut}
-                className="text-[10px] font-mono text-text-muted hover:text-white transition-colors uppercase tracking-wider"
-              >
-                Sign out
-              </button>
+              <p className="text-[11px] font-medium truncate">{user.user_metadata?.full_name || user.email}</p>
+              <button onClick={onSignOut} className="text-[10px] font-mono text-text-muted hover:text-white transition-colors uppercase tracking-wider">Sign out</button>
             </div>
           </div>
         </div>
@@ -247,7 +461,7 @@ function Sidebar({
   );
 }
 
-// ─── Diet Tracker (Image Recognition) ────────────────────────
+// ─── Diet Tracker ────────────────────────────────────────────
 
 function DietTracker() {
   const [image, setImage] = useState<string | null>(null);
@@ -258,140 +472,73 @@ function DietTracker() {
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      setImage(base64);
-      setResult(null);
-      analyzeImage(base64);
-    };
+    reader.onloadend = () => { const b = reader.result as string; setImage(b); setResult(null); analyzeImage(b); };
     reader.readAsDataURL(file);
   };
 
   const analyzeImage = async (base64: string) => {
     setAnalyzing(true);
     try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64 }),
-      });
-
+      const res = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: base64 }) });
       if (!res.ok) throw new Error("Analysis failed");
-
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No reader");
-
       const decoder = new TextDecoder();
       let content = "";
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
-        for (const line of lines) {
-          const data = line.slice(6);
-          if (data === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(data);
-            content += parsed.text;
-            setResult(content);
-          } catch {
-            // skip
-          }
+        for (const line of chunk.split("\n").filter((l) => l.startsWith("data: "))) {
+          const d = line.slice(6);
+          if (d === "[DONE]") break;
+          try { content += JSON.parse(d).text; setResult(content); } catch { /* skip */ }
         }
       }
-    } catch {
-      setResult("**Could not analyze this image.** Try a clearer photo of your meal.");
-    } finally {
-      setAnalyzing(false);
-    }
+    } catch { setResult("**Could not analyze this image.** Try a clearer photo."); }
+    finally { setAnalyzing(false); }
   };
 
-  const reset = () => {
-    setImage(null);
-    setResult(null);
-    if (fileRef.current) fileRef.current.value = "";
-  };
+  const reset = () => { setImage(null); setResult(null); if (fileRef.current) fileRef.current.value = ""; };
 
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin">
       <div className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-8">
-          <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-2">
-            Image Recognition
-          </p>
+          <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-2">Image Recognition</p>
           <h2 className="text-2xl font-bold tracking-tight uppercase">Meal Scanner</h2>
-          <p className="text-sm text-text-secondary mt-2">
-            Snap a photo of your meal. AI identifies the food and estimates calories, protein, carbs, and fat.
-          </p>
+          <p className="text-sm text-text-secondary mt-2">Snap a photo of your meal. AI estimates calories, protein, carbs, and fat.</p>
         </div>
-
         {!image ? (
-          <div
-            onClick={() => fileRef.current?.click()}
-            className="group border border-dashed border-border-accent hover:border-white/40 transition-colors cursor-pointer flex flex-col items-center justify-center py-20 px-8"
-          >
+          <div onClick={() => fileRef.current?.click()} className="group border border-dashed border-border-accent hover:border-white/40 transition-colors cursor-pointer flex flex-col items-center justify-center py-20 px-8">
             <IconCamera className="h-10 w-10 text-text-muted group-hover:text-white transition-colors mb-4" />
-            <p className="text-xs font-mono text-text-muted group-hover:text-white transition-colors uppercase tracking-wider">
-              Upload meal photo
-            </p>
+            <p className="text-xs font-mono text-text-muted group-hover:text-white transition-colors uppercase tracking-wider">Upload meal photo</p>
             <p className="text-[10px] text-text-muted mt-2">JPG, PNG, WEBP</p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handleFile}
-              className="hidden"
-            />
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFile} className="hidden" />
           </div>
         ) : (
           <div className="space-y-4 animate-fade-in">
             <div className="relative border border-border-primary">
-              <img
-                src={image}
-                alt="Meal"
-                className="w-full max-h-80 object-cover grayscale-[30%]"
-              />
+              <img src={image} alt="Meal" className="w-full max-h-80 object-cover grayscale-[30%]" />
               {analyzing && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                   <div className="text-center">
                     <div className="flex items-center gap-1.5 justify-center mb-2">
-                      {[0, 1, 2].map((i) => (
-                        <span
-                          key={i}
-                          className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white"
-                          style={{ animation: "typing-dot 1s ease-in-out infinite", animationDelay: `${i * 0.15}s` }}
-                        />
-                      ))}
+                      {[0, 1, 2].map((i) => (<span key={i} className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white" style={{ animation: "typing-dot 1s ease-in-out infinite", animationDelay: `${i * 0.15}s` }} />))}
                     </div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-text-secondary">
-                      Analyzing
-                    </p>
+                    <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-text-secondary">Analyzing</p>
                   </div>
                 </div>
               )}
             </div>
-
             {result && (
               <div className="border border-border-primary bg-bg-card p-5 animate-fade-in">
-                <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">
-                  Analysis
-                </p>
-                <div className="prose-diet text-sm">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{result}</ReactMarkdown>
-                </div>
+                <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase mb-3">Analysis</p>
+                <div className="prose-diet text-sm"><ReactMarkdown remarkPlugins={[remarkGfm]}>{result}</ReactMarkdown></div>
               </div>
             )}
-
-            <button
-              onClick={reset}
-              className="text-[11px] font-mono uppercase tracking-[0.15em] text-text-muted hover:text-white transition-colors border-b border-text-muted hover:border-white pb-0.5"
-            >
-              Scan another meal
-            </button>
+            <button onClick={reset} className="text-[11px] font-mono uppercase tracking-[0.15em] text-text-muted hover:text-white transition-colors border-b border-text-muted hover:border-white pb-0.5">Scan another meal</button>
           </div>
         )}
       </div>
@@ -399,78 +546,68 @@ function DietTracker() {
   );
 }
 
-// ─── Hero / Landing ──────────────────────────────────────────
+// ─── Hero ────────────────────────────────────────────────────
 
-function HeroSection({
-  onStart,
-  onSignIn,
-  user,
-}: {
-  onStart: () => void;
-  onSignIn: () => void;
-  user: User | null;
-}) {
+function HeroSection({ onStart, onSignIn, user }: { onStart: () => void; onSignIn: () => void; user: User | null }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-dvh px-6 text-center">
       <div className="animate-fade-in max-w-xl">
-        <p className="text-[10px] font-mono text-text-muted tracking-[0.3em] uppercase mb-6">
-          AI-Powered Nutrition
-        </p>
-
-        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter uppercase mb-6">
-          Diet
-          <br />
-          Coach
-        </h1>
-
-        <p className="text-text-secondary text-sm md:text-base leading-relaxed mb-2 max-w-md mx-auto">
-          Fully custom meal plans, macro targets, and a fat-loss strategy built around your life.
-        </p>
-
-        <p className="text-text-muted text-[11px] font-mono uppercase tracking-wider mb-12">
-          No bland diets. No restriction. Just results.
-        </p>
-
+        <p className="text-[10px] font-mono text-text-muted tracking-[0.3em] uppercase mb-6">AI-Powered Nutrition</p>
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter uppercase mb-6">Diet<br />Coach</h1>
+        <p className="text-text-secondary text-sm md:text-base leading-relaxed mb-2 max-w-md mx-auto">Fully custom meal plans, macro targets, and a fat-loss strategy built around your life.</p>
+        <p className="text-text-muted text-[11px] font-mono uppercase tracking-wider mb-12">No bland diets. No restriction. Just results.</p>
         {user ? (
-          <button
-            onClick={onStart}
-            className="inline-flex items-center gap-3 bg-white text-black px-10 py-4 text-xs font-bold uppercase tracking-[0.15em] hover:bg-gray-200 active:bg-gray-300 transition-colors"
-          >
-            Start My Plan
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
+          <button onClick={onStart} className="inline-flex items-center gap-3 bg-white text-black px-10 py-4 text-xs font-bold uppercase tracking-[0.15em] hover:bg-gray-200 active:bg-gray-300 transition-colors">
+            Start My Plan <IconArrow className="h-3.5 w-3.5" />
           </button>
         ) : (
-          <button
-            onClick={onSignIn}
-            className="group inline-flex items-center gap-3 bg-white text-black px-10 py-4 text-xs font-bold uppercase tracking-[0.15em] hover:bg-gray-200 active:bg-gray-300 transition-colors"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-            </svg>
+          <button onClick={onSignIn} className="group inline-flex items-center gap-3 bg-white text-black px-10 py-4 text-xs font-bold uppercase tracking-[0.15em] hover:bg-gray-200 active:bg-gray-300 transition-colors">
+            <svg className="h-4 w-4" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
             Sign in with Google
           </button>
         )}
-
         <div className="mt-20 flex items-center justify-center gap-12 text-center">
-          {[
-            { value: "10 MIN", label: "SETUP" },
-            { value: "7 DAY", label: "MEAL PLAN" },
-            { value: "100%", label: "PERSONAL" },
-          ].map((stat) => (
-            <div key={stat.label}>
-              <div className="text-lg font-bold tracking-tight">{stat.value}</div>
-              <div className="text-[9px] font-mono text-text-muted tracking-[0.2em] mt-1">{stat.label}</div>
-            </div>
+          {[{ value: "10 MIN", label: "SETUP" }, { value: "7 DAY", label: "MEAL PLAN" }, { value: "100%", label: "PERSONAL" }].map((stat) => (
+            <div key={stat.label}><div className="text-lg font-bold tracking-tight">{stat.value}</div><div className="text-[9px] font-mono text-text-muted tracking-[0.2em] mt-1">{stat.label}</div></div>
           ))}
         </div>
       </div>
     </div>
   );
+}
+
+// ─── Compile form data into a chat message ───────────────────
+
+function compileIntake(d: IntakeData): string {
+  return `Here is my complete profile. Please generate my full personalised nutrition plan.
+
+**STATS**
+- Age: ${d.age}
+- Sex: ${d.sex}
+- Height: ${d.height} ${d.heightUnit}
+- Weight: ${d.weight} ${d.weightUnit}
+- Goal: ${d.goalWeight || "Get lean / visible abs"}
+- Pace: ${d.pace}
+
+**LIFESTYLE**
+- Job: ${d.jobType}
+- Exercise: ${d.exerciseFreq}x per week — ${d.exerciseType || "general training"}
+- Sleep: ${d.sleep || "~7"} hours/night
+- Stress: ${d.stress}
+- Alcohol: ${d.alcohol || "None"}
+
+**FOOD PREFERENCES**
+- Favourite meals: ${d.favMeals}
+- Hated foods: ${d.hatedFoods || "None"}
+- Restrictions: ${d.restrictions || "None"}
+- Cooking style: ${d.cookingStyle}
+- Adventurousness: ${d.adventurous}/10
+
+**SNACK HABITS**
+- Current snacks: ${d.currentSnacks}
+- Snacking reason: ${d.snackReason}
+- Preference: ${d.snackPreference}
+- Late night snacking: ${d.lateNightSnack}`;
 }
 
 // ─── Main App ────────────────────────────────────────────────
@@ -480,12 +617,11 @@ export default function Home() {
 
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [started, setStarted] = useState(false);
+  const [view, setView] = useState<AppView>("hero");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [section, setSection] = useState(0);
-  const [activeTab, setActiveTab] = useState<ActiveTab>("coach");
+  const [activeTab, setActiveTab] = useState<"coach" | "tracker">("coach");
 
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
@@ -495,344 +631,167 @@ export default function Home() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Auth ──
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user: u } }) => {
-      setUser(u);
-      setAuthLoading(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+    supabase.auth.getUser().then(({ data: { user: u } }) => { setUser(u); setAuthLoading(false); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
     return () => subscription.unsubscribe();
   }, [supabase.auth]);
 
   useEffect(() => {
-    if (!user) return;
-    fetch("/api/conversations")
-      .then((r) => r.json())
-      .then((d) => setConversations(d.conversations ?? []))
-      .catch(() => {});
+    if (user) fetch("/api/conversations").then((r) => r.json()).then((d) => setConversations(d.conversations ?? [])).catch(() => {});
   }, [user]);
 
+  // ── Auto-save ──
   useEffect(() => {
     if (!user || messages.length < 2) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-
     saveTimer.current = setTimeout(() => {
-      const title =
-        messages.find((m) => m.role === "assistant")?.content.slice(0, 60).replace(/[#*_]/g, "").trim() ||
-        "New Plan";
-
+      const title = messages.find((m) => m.role === "assistant")?.content.slice(0, 60).replace(/[#*_]/g, "").trim() || "New Plan";
       if (activeConvoId) {
-        fetch(`/api/conversations/${activeConvoId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages, title }),
-        }).then(() => refreshConversations());
+        fetch(`/api/conversations/${activeConvoId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages, title }) }).then(() => refreshConvos());
       } else {
-        fetch("/api/conversations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages, title }),
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.id) setActiveConvoId(d.id);
-            refreshConversations();
-          });
+        fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages, title }) })
+          .then((r) => r.json()).then((d) => { if (d.id) setActiveConvoId(d.id); refreshConvos(); });
       }
     }, 2000);
-
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [messages, user, activeConvoId]);
 
-  const refreshConversations = () => {
-    fetch("/api/conversations")
-      .then((r) => r.json())
-      .then((d) => setConversations(d.conversations ?? []))
-      .catch(() => {});
-  };
+  const refreshConvos = () => fetch("/api/conversations").then((r) => r.json()).then((d) => setConversations(d.conversations ?? [])).catch(() => {});
 
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  useEffect(() => { scrollToBottom(); }, [messages, isStreaming, scrollToBottom]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isStreaming]);
   useEffect(() => { if (!isStreaming) inputRef.current?.focus(); }, [isStreaming]);
 
-  const detectSection = useCallback((allMessages: Message[]) => {
-    const full = allMessages
-      .filter((m) => m.role === "assistant")
-      .map((m) => m.content.toLowerCase())
-      .join(" ");
+  // ── Send message ──
+  const sendMessage = useCallback(async (userMessage: string, existingMessages: Message[] = []) => {
+    const newMessages: Message[] = [...existingMessages, { role: "user", content: userMessage }];
+    setMessages(newMessages);
+    setInput("");
+    setIsStreaming(true);
 
-    if (full.includes("supplement") || full.includes("hydration target") || full.includes("timeline")) setSection(4);
-    else if (full.includes("snack")) setSection(4);
-    else if (full.includes("food preference") || full.includes("favourite meal") || full.includes("favorite meal")) setSection(3);
-    else if (full.includes("lifestyle") || full.includes("job type") || full.includes("exercise")) setSection(2);
-    else if (full.includes("stats") || full.includes("age") || full.includes("height") || full.includes("weight")) setSection(1);
+    try {
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: newMessages }) });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed"); }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader");
+      const decoder = new TextDecoder();
+      let content = "";
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split("\n").filter((l) => l.startsWith("data: "))) {
+          const d = line.slice(6);
+          if (d === "[DONE]") break;
+          try { content += JSON.parse(d).text; setMessages((prev) => { const u = [...prev]; u[u.length - 1] = { role: "assistant", content }; return u; }); } catch { /* skip */ }
+        }
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Something went wrong";
+      setMessages((prev) => [...prev, { role: "assistant", content: `**Error:** ${msg}` }]);
+    } finally {
+      setIsStreaming(false);
+    }
   }, []);
 
-  const sendMessage = useCallback(
-    async (userMessage: string) => {
-      const newMessages: Message[] = [...messages, { role: "user", content: userMessage }];
-      setMessages(newMessages);
-      setInput("");
-      setIsStreaming(true);
-
-      try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: newMessages }),
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Failed to get response");
-        }
-
-        const reader = res.body?.getReader();
-        if (!reader) throw new Error("No reader available");
-
-        const decoder = new TextDecoder();
-        let assistantContent = "";
-        setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
-          for (const line of lines) {
-            const data = line.slice(6);
-            if (data === "[DONE]") break;
-            try {
-              const parsed = JSON.parse(data);
-              assistantContent += parsed.text;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: "assistant", content: assistantContent };
-                return updated;
-              });
-            } catch { /* skip */ }
-          }
-        }
-        detectSection([...newMessages, { role: "assistant", content: assistantContent }]);
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : "Something went wrong";
-        setMessages((prev) => [...prev, { role: "assistant", content: `**Error:** ${msg}` }]);
-      } finally {
-        setIsStreaming(false);
-      }
-    },
-    [messages, detectSection],
-  );
-
+  // ── Handlers ──
   const handleSignIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
+    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
   };
-
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setUser(null);
-    setStarted(false);
-    setMessages([]);
-    setActiveConvoId(null);
-    setConversations([]);
+    setUser(null); setView("hero"); setMessages([]); setActiveConvoId(null); setConversations([]);
   };
 
-  const handleNewConversation = () => {
-    setActiveConvoId(null);
-    setMessages([]);
-    setSection(0);
-    setStarted(true);
+  const handleIntakeComplete = (data: IntakeData) => {
+    const compiled = compileIntake(data);
+    setView("chat");
     setActiveTab("coach");
-    setSidebarOpen(false);
-    setTimeout(() => {
-      sendMessage("Hey, I want to get lean and build a nutrition plan. Let's go!");
-    }, 300);
+    setActiveConvoId(null);
+    setMessages([]);
+    setTimeout(() => sendMessage(compiled, []), 100);
   };
 
-  const handleSelectConversation = async (id: string) => {
+  const handleNewPlan = () => { setActiveConvoId(null); setMessages([]); setView("intake"); setSidebarOpen(false); };
+
+  const handleSelectConvo = async (id: string) => {
     try {
       const res = await fetch(`/api/conversations/${id}`);
       const data = await res.json();
-      if (data.conversation) {
-        setActiveConvoId(id);
-        setMessages(data.conversation.messages || []);
-        setStarted(true);
-        setActiveTab("coach");
-        setSidebarOpen(false);
-        detectSection(data.conversation.messages || []);
-      }
+      if (data.conversation) { setActiveConvoId(id); setMessages(data.conversation.messages || []); setView("chat"); setActiveTab("coach"); setSidebarOpen(false); }
     } catch { /* silent */ }
   };
 
-  const handleDeleteConversation = async (id: string) => {
+  const handleDeleteConvo = async (id: string) => {
     await fetch(`/api/conversations/${id}`, { method: "DELETE" });
-    if (activeConvoId === id) {
-      setActiveConvoId(null);
-      setMessages([]);
-      setStarted(false);
-    }
-    refreshConversations();
+    if (activeConvoId === id) { setActiveConvoId(null); setMessages([]); setView("hero"); }
+    refreshConvos();
   };
-
-  const handleStart = useCallback(() => {
-    setStarted(true);
-    setMessages([]);
-    setActiveConvoId(null);
-    setSection(0);
-    setTimeout(() => {
-      sendMessage("Hey, I want to get lean and build a nutrition plan. Let's go!");
-    }, 300);
-  }, [sendMessage]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isStreaming) return;
-    sendMessage(input.trim());
+    sendMessage(input.trim(), messages);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); }
   };
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-dvh">
-        <p className="text-[10px] font-mono text-text-muted tracking-[0.3em] uppercase animate-pulse-dot">
-          Loading
-        </p>
-      </div>
-    );
-  }
+  // ── Render ──
+  if (authLoading) return (
+    <div className="flex items-center justify-center min-h-dvh">
+      <p className="text-[10px] font-mono text-text-muted tracking-[0.3em] uppercase animate-pulse">Loading</p>
+    </div>
+  );
 
-  if (!user || !started) {
-    return <HeroSection onStart={handleStart} onSignIn={handleSignIn} user={user} />;
-  }
+  if (!user || view === "hero") return <HeroSection onStart={() => setView("intake")} onSignIn={handleSignIn} user={user} />;
+  if (view === "intake") return <IntakeForm onComplete={handleIntakeComplete} />;
 
+  // ── Chat + Tracker view ──
   return (
     <div className="flex h-dvh">
-      <Sidebar
-        user={user}
-        conversations={conversations}
-        activeId={activeConvoId}
-        onSelect={handleSelectConversation}
-        onNew={handleNewConversation}
-        onDelete={handleDeleteConversation}
-        onSignOut={handleSignOut}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
-
+      <Sidebar user={user} conversations={conversations} activeId={activeConvoId} onSelect={handleSelectConvo} onNew={handleNewPlan} onDelete={handleDeleteConvo} onSignOut={handleSignOut} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex flex-col flex-1 min-w-0">
-        {/* Header */}
         <header className="sticky top-0 z-20 border-b border-border-primary bg-bg-primary/90 backdrop-blur-md">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="md:hidden h-8 w-8 border border-border-primary flex items-center justify-center text-text-muted hover:text-white transition-colors"
-              >
-                <IconMenu />
-              </button>
-
-              {/* Tabs */}
+              <button onClick={() => setSidebarOpen(true)} className="md:hidden h-8 w-8 border border-border-primary flex items-center justify-center text-text-muted hover:text-white transition-colors"><IconMenu /></button>
               <div className="flex items-center border border-border-primary">
-                <button
-                  onClick={() => setActiveTab("coach")}
-                  className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${
-                    activeTab === "coach" ? "bg-white text-black" : "text-text-muted hover:text-white"
-                  }`}
-                >
-                  Coach
-                </button>
-                <button
-                  onClick={() => setActiveTab("tracker")}
-                  className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors flex items-center gap-1.5 ${
-                    activeTab === "tracker" ? "bg-white text-black" : "text-text-muted hover:text-white"
-                  }`}
-                >
-                  <IconCamera className="h-3 w-3" />
-                  Tracker
-                </button>
+                <button onClick={() => setActiveTab("coach")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${activeTab === "coach" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}>Coach</button>
+                <button onClick={() => setActiveTab("tracker")} className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors flex items-center gap-1.5 ${activeTab === "tracker" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}><IconCamera className="h-3 w-3" />Tracker</button>
               </div>
             </div>
-
-            {activeTab === "coach" && <SectionProgress current={section} />}
-
-            {activeTab === "tracker" && (
-              <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">
-                Image Recognition
-              </span>
-            )}
+            <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">{activeTab === "tracker" ? "Image Recognition" : "Chat"}</span>
           </div>
         </header>
 
-        {/* Content */}
-        {activeTab === "tracker" ? (
-          <DietTracker />
-        ) : (
+        {activeTab === "tracker" ? <DietTracker /> : (
           <>
             <main className="flex-1 overflow-y-auto scrollbar-thin">
               <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
-                {messages.map((msg, i) => (
-                  <MessageBubble key={i} message={msg} />
-                ))}
+                {messages.map((msg, i) => <MessageBubble key={i} message={msg} />)}
                 {isStreaming && messages[messages.length - 1]?.role !== "assistant" && (
-                  <div className="flex justify-start">
-                    <div className="bg-bg-card border border-border-primary px-4 py-3">
-                      <TypingIndicator />
-                    </div>
-                  </div>
+                  <div className="flex justify-start"><div className="bg-bg-card border border-border-primary px-4 py-3"><TypingIndicator /></div></div>
                 )}
                 <div ref={bottomRef} />
               </div>
             </main>
-
             <footer className="sticky bottom-0 border-t border-border-primary bg-bg-primary/90 backdrop-blur-md">
               <form onSubmit={handleSubmit} className="mx-auto max-w-3xl flex items-end gap-3 px-4 py-3">
-                <div className="relative flex-1">
-                  <textarea
-                    ref={inputRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={isStreaming ? "Processing..." : "Type your answer..."}
-                    disabled={isStreaming}
-                    rows={1}
-                    className="w-full resize-none border border-border-primary bg-bg-input px-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:border-white/30 focus:outline-none transition-colors disabled:opacity-40"
-                    style={{ maxHeight: "120px" }}
-                    onInput={(e) => {
-                      const target = e.target as HTMLTextAreaElement;
-                      target.style.height = "auto";
-                      target.style.height = Math.min(target.scrollHeight, 120) + "px";
-                    }}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isStreaming}
-                  className="flex h-[46px] w-[46px] shrink-0 items-center justify-center bg-white text-black transition-all hover:bg-gray-200 active:bg-gray-300 disabled:opacity-20 disabled:hover:bg-white"
-                >
+                <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                  placeholder={isStreaming ? "Generating your plan..." : "Ask a follow-up question..."} disabled={isStreaming} rows={1}
+                  className="flex-1 resize-none border border-border-primary bg-bg-input px-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:border-white/30 focus:outline-none transition-colors disabled:opacity-40"
+                  style={{ maxHeight: "120px" }}
+                  onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; }}
+                />
+                <button type="submit" disabled={!input.trim() || isStreaming}
+                  className="flex h-[46px] w-[46px] shrink-0 items-center justify-center bg-white text-black transition-all hover:bg-gray-200 active:bg-gray-300 disabled:opacity-20">
                   <IconSend />
                 </button>
               </form>
-              <div className="text-center pb-2">
-                <span className="text-[9px] font-mono text-text-muted tracking-wider uppercase">
-                  AI-generated — consult a professional
-                </span>
-              </div>
+              <div className="text-center pb-2"><span className="text-[9px] font-mono text-text-muted tracking-wider uppercase">AI-generated — consult a professional</span></div>
             </footer>
           </>
         )}
