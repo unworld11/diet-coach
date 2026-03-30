@@ -542,6 +542,9 @@ function DietTracker({ user }: { user: User | null }) {
     label: "", calories: "", protein: "", carbs: "", fat: "",
     meal_type: guessMealType(), logged_at: "",
   });
+  const [manualMode, setManualMode] = useState<"ai" | "manual">("ai");
+  const [aiDesc, setAiDesc] = useState("");
+  const [aiEstimating, setAiEstimating] = useState(false);
 
   // sub-view: "log" | "scan" | "manual"
   const [subView, setSubView] = useState<"log" | "scan" | "manual">("log");
@@ -629,7 +632,29 @@ function DietTracker({ user }: { user: User | null }) {
 
   const resetScan = () => { setImage(null); setScanResult(null); setScanMacros(null); setScanSaved(false); if (fileRef.current) fileRef.current.value = ""; };
 
-  // manual add
+  const estimateWithAi = async () => {
+    if (!aiDesc.trim()) return;
+    setAiEstimating(true);
+    try {
+      const res = await fetch("/api/estimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: aiDesc }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setManualForm((prev) => ({
+        ...prev,
+        label: data.label || aiDesc,
+        calories: String(data.calories || 0),
+        protein: String(data.protein || 0),
+        carbs: String(data.carbs || 0),
+        fat: String(data.fat || 0),
+      }));
+    } catch { /* keep form as-is */ }
+    finally { setAiEstimating(false); }
+  };
+
   const handleManualSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const loggedAt = manualForm.logged_at
@@ -787,43 +812,78 @@ function DietTracker({ user }: { user: User | null }) {
 
         {/* ── Manual Add ── */}
         {subView === "manual" && (
-          <form onSubmit={handleManualSubmit} className="space-y-4 animate-fade-in">
-            <Field label="Meal name">
-              <input value={manualForm.label} onChange={(e) => setManualForm({ ...manualForm, label: e.target.value })} placeholder="e.g. Chicken rice bowl" className={inputClass} required />
-            </Field>
-            <Field label="Meal type">
-              <Pills
-                options={[
-                  { value: "breakfast", label: "Breakfast" },
-                  { value: "lunch", label: "Lunch" },
-                  { value: "snack", label: "Snack" },
-                  { value: "dinner", label: "Dinner" },
-                ]}
-                value={manualForm.meal_type}
-                onChange={(v) => setManualForm({ ...manualForm, meal_type: v })}
-              />
-            </Field>
-            <Field label="Date & time (leave blank for now)">
-              <input type="datetime-local" value={manualForm.logged_at} onChange={(e) => setManualForm({ ...manualForm, logged_at: e.target.value })} className={inputClass} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Calories (kcal)">
-                <input type="number" value={manualForm.calories} onChange={(e) => setManualForm({ ...manualForm, calories: e.target.value })} placeholder="0" className={inputClass} required />
-              </Field>
-              <Field label="Protein (g)">
-                <input type="number" step="0.1" value={manualForm.protein} onChange={(e) => setManualForm({ ...manualForm, protein: e.target.value })} placeholder="0" className={inputClass} />
-              </Field>
-              <Field label="Carbs (g)">
-                <input type="number" step="0.1" value={manualForm.carbs} onChange={(e) => setManualForm({ ...manualForm, carbs: e.target.value })} placeholder="0" className={inputClass} />
-              </Field>
-              <Field label="Fat (g)">
-                <input type="number" step="0.1" value={manualForm.fat} onChange={(e) => setManualForm({ ...manualForm, fat: e.target.value })} placeholder="0" className={inputClass} />
-              </Field>
+          <div className="space-y-4 animate-fade-in">
+            {/* AI / Manual toggle */}
+            <div className="flex items-center border border-border-primary w-fit">
+              <button type="button" onClick={() => setManualMode("ai")}
+                className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${manualMode === "ai" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}>
+                AI Detect
+              </button>
+              <button type="button" onClick={() => setManualMode("manual")}
+                className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] transition-colors ${manualMode === "manual" ? "bg-white text-black" : "text-text-muted hover:text-white"}`}>
+                Enter Manually
+              </button>
             </div>
-            <button type="submit" className="w-full py-3 bg-white text-black text-xs font-mono uppercase tracking-[0.15em] hover:bg-gray-200 transition-colors">
-              Add Meal
-            </button>
-          </form>
+
+            {/* AI description input */}
+            {manualMode === "ai" && (
+              <div className="space-y-3">
+                <Field label="Describe your meal">
+                  <textarea value={aiDesc} onChange={(e) => setAiDesc(e.target.value)}
+                    placeholder="e.g. 2 eggs, toast with butter, black coffee"
+                    rows={3} className={inputClass + " resize-none"} />
+                </Field>
+                <button type="button" onClick={estimateWithAi} disabled={!aiDesc.trim() || aiEstimating}
+                  className="w-full py-2.5 border border-white text-xs font-mono uppercase tracking-[0.15em] transition-colors hover:bg-white hover:text-black disabled:opacity-30">
+                  {aiEstimating ? "Estimating..." : "Estimate Macros"}
+                </button>
+                {manualForm.calories && (
+                  <div className="border border-border-accent bg-bg-card p-3 text-xs font-mono space-y-1 animate-fade-in">
+                    <p className="text-text-secondary uppercase tracking-wider text-[9px] mb-2">AI Estimate — edit below if needed</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Shared form fields */}
+            <form onSubmit={handleManualSubmit} className="space-y-4">
+              <Field label="Meal name">
+                <input value={manualForm.label} onChange={(e) => setManualForm({ ...manualForm, label: e.target.value })} placeholder="e.g. Chicken rice bowl" className={inputClass} required />
+              </Field>
+              <Field label="Meal type">
+                <Pills
+                  options={[
+                    { value: "breakfast", label: "Breakfast" },
+                    { value: "lunch", label: "Lunch" },
+                    { value: "snack", label: "Snack" },
+                    { value: "dinner", label: "Dinner" },
+                  ]}
+                  value={manualForm.meal_type}
+                  onChange={(v) => setManualForm({ ...manualForm, meal_type: v })}
+                />
+              </Field>
+              <Field label="Date & time (leave blank for now)">
+                <input type="datetime-local" value={manualForm.logged_at} onChange={(e) => setManualForm({ ...manualForm, logged_at: e.target.value })} className={inputClass} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Calories (kcal)">
+                  <input type="number" value={manualForm.calories} onChange={(e) => setManualForm({ ...manualForm, calories: e.target.value })} placeholder="0" className={inputClass} required />
+                </Field>
+                <Field label="Protein (g)">
+                  <input type="number" step="0.1" value={manualForm.protein} onChange={(e) => setManualForm({ ...manualForm, protein: e.target.value })} placeholder="0" className={inputClass} />
+                </Field>
+                <Field label="Carbs (g)">
+                  <input type="number" step="0.1" value={manualForm.carbs} onChange={(e) => setManualForm({ ...manualForm, carbs: e.target.value })} placeholder="0" className={inputClass} />
+                </Field>
+                <Field label="Fat (g)">
+                  <input type="number" step="0.1" value={manualForm.fat} onChange={(e) => setManualForm({ ...manualForm, fat: e.target.value })} placeholder="0" className={inputClass} />
+                </Field>
+              </div>
+              <button type="submit" className="w-full py-3 bg-white text-black text-xs font-mono uppercase tracking-[0.15em] hover:bg-gray-200 transition-colors">
+                Add Meal
+              </button>
+            </form>
+          </div>
         )}
 
       </div>
