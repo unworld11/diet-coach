@@ -1323,9 +1323,34 @@ function FriendsView({ user }: { user: User | null }) {
 // ─── Hero ────────────────────────────────────────────────────
 
 function HeroSection({ onStart, onSignIn, user }: { onStart: () => void; onSignIn: () => void; user: User | null }) {
+  const [playerName, setPlayerName] = useState("");
+  const [players, setPlayers] = useState<string[]>([]);
+  const [imposters, setImposters] = useState("1");
+  const [roundTime, setRoundTime] = useState("3");
+
+  const maxImposters = Math.max(1, Math.floor(players.length / 3));
+
+  const addPlayer = () => {
+    const cleanName = playerName.trim();
+    if (!cleanName) return;
+    if (players.includes(cleanName)) return;
+    setPlayers((prev) => [...prev, cleanName]);
+    setPlayerName("");
+  };
+
+  const removePlayer = (name: string) => {
+    setPlayers((prev) => prev.filter((p) => p !== name));
+  };
+
+  useEffect(() => {
+    if (Number(imposters) > maxImposters) {
+      setImposters(String(maxImposters));
+    }
+  }, [imposters, maxImposters]);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-dvh px-6 text-center">
-      <div className="animate-fade-in max-w-xl">
+    <div className="flex flex-col items-center justify-center min-h-dvh px-6 py-12 text-center">
+      <div className="animate-fade-in max-w-5xl w-full">
         <p className="text-[10px] font-mono text-text-muted tracking-[0.3em] uppercase mb-6">AI-Powered Nutrition</p>
         <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter uppercase mb-6">Diet<br />Coach</h1>
         <p className="text-text-secondary text-sm md:text-base leading-relaxed mb-2 max-w-md mx-auto">Fully custom meal plans, macro targets, and a fat-loss strategy built around your life.</p>
@@ -1345,6 +1370,108 @@ function HeroSection({ onStart, onSignIn, user }: { onStart: () => void; onSignI
             <div key={stat.label}><div className="text-lg font-bold tracking-tight">{stat.value}</div><div className="text-[9px] font-mono text-text-muted tracking-[0.2em] mt-1">{stat.label}</div></div>
           ))}
         </div>
+
+        <section className="mt-16 text-left border border-border-primary bg-bg-card/70 p-5 sm:p-8 backdrop-blur-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[10px] font-mono text-text-muted tracking-[0.2em] uppercase">Party Game Setup</p>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight uppercase mt-1">Play Undercover</h2>
+              <p className="text-xs text-text-secondary mt-2 max-w-xl">
+                Build your lobby in seconds: add players, pick the number of imposters, and customize the round timer.
+              </p>
+            </div>
+            <span className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">
+              {players.length} Players • {imposters} Imposter{imposters === "1" ? "" : "s"}
+            </span>
+          </div>
+
+          <div className="mt-6 grid gap-5 lg:grid-cols-2">
+            <div className="border border-border-primary bg-bg-input/40 p-4 space-y-3">
+              <p className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">Player Section</p>
+              <div className="flex gap-2">
+                <input
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addPlayer();
+                    }
+                  }}
+                  placeholder="Enter player name"
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  onClick={addPlayer}
+                  className="px-4 bg-white text-black text-[10px] font-mono uppercase tracking-[0.15em] hover:bg-gray-200 transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2 min-h-7">
+                {players.length === 0 ? (
+                  <p className="text-[11px] text-text-muted">No players yet. Add names to start your lobby.</p>
+                ) : (
+                  players.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => removePlayer(name)}
+                      className="inline-flex items-center gap-2 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.12em] border border-border-accent text-text-secondary hover:text-white hover:border-white/40 transition-colors"
+                    >
+                      {name}
+                      <IconTrash className="h-3 w-3" />
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="border border-border-primary bg-bg-input/40 p-4 space-y-4">
+              <p className="text-[10px] font-mono text-text-muted tracking-[0.15em] uppercase">Game Controls</p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Field label="Number of Imposters">
+                  <select
+                    value={imposters}
+                    onChange={(e) => setImposters(e.target.value)}
+                    className={selectClass}
+                  >
+                    {Array.from({ length: maxImposters }, (_, i) => i + 1).map((value) => (
+                      <option key={value} value={String(value)}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Round Timer (Minutes)">
+                  <select
+                    value={roundTime}
+                    onChange={(e) => setRoundTime(e.target.value)}
+                    className={selectClass}
+                  >
+                    {["2", "3", "5", "7", "10"].map((time) => (
+                      <option key={time} value={time}>
+                        {time} minutes
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <div className="border border-border-accent p-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] font-mono text-text-secondary uppercase tracking-[0.15em]">
+                  Ready: {players.length} players • {imposters} imposters • {roundTime}m rounds
+                </p>
+                <button
+                  type="button"
+                  className="px-4 py-1.5 border border-white/30 text-[10px] font-mono uppercase tracking-[0.15em] text-white hover:border-white hover:bg-white/10 transition-colors"
+                >
+                  Start Undercover
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
